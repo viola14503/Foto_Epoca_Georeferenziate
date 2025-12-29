@@ -17,7 +17,6 @@
             box-sizing: border-box;
         }
 
-        /* font base responsive */
         body {
             margin: 0;
             padding: 0;
@@ -80,16 +79,16 @@
             flex: 1;
         }
 
-        /* POPUP: grande + scroll interno generale */
+        /* ✅ POPUP: grande ma NON scrolla lui (scrolla solo la colonna foto) */
         .mapboxgl-popup-content {
             width: min(92vw, 1200px);
             max-width: 1200px;
             max-height: min(80vh, 780px);
-            overflow: auto;
+            overflow: hidden; /* <<< importante */
             padding: 16px 18px;
         }
 
-        /* ✅ Layout popup: sinistra foto (scroll), destra testo */
+        /* ✅ Layout popup: SINISTRA foto, DESTRA testo */
         .popup-grid {
             display: grid;
             grid-template-columns: minmax(420px, 680px) 1fr;
@@ -97,11 +96,11 @@
             align-items: start;
         }
 
-        /* Colonna sinistra scrollabile */
+        /* ✅ Colonna sinistra: scroll verticale con rotellina */
         .popup-left {
             max-height: min(72vh, 680px);
             overflow: auto;
-            padding-right: 6px;
+            padding-right: 8px;
         }
 
         .photo-card {
@@ -130,9 +129,6 @@
             margin-top: 6px;
             font-size: 13px;
             overflow-wrap: anywhere;
-        }
-
-        .popup-right {
         }
 
         .popup-title {
@@ -198,14 +194,11 @@
     </div>
 
     <script>
-        // 🔑 Token Mapbox
         mapboxgl.accessToken =
             "pk.eyJ1IjoidmlvbGExMCIsImEiOiJjbWk0YjU2eDkxNDFtMmtxd2Eza3RyZ2QwIn0.AjMPW13eUzC91eH1FHD0-g";
 
-        // 📄 CSV esportato dal foglio FOTO_EPOCA_Selezionate
         const CSV_FILE = "FOTO_EPOCA_Selezionate.csv";
 
-        // Vista iniziale: Lazio + limitrofi
         const map = new mapboxgl.Map({
             container: "map",
             style: "mapbox://styles/mapbox/light-v11",
@@ -216,7 +209,6 @@
         const markersByGroup = {};
         let records = [];
 
-        // Escape HTML
         function esc(s) {
             return (s ?? "").toString()
                 .replaceAll("&", "&amp;")
@@ -226,7 +218,6 @@
                 .replaceAll("'", "&#039;");
         }
 
-        // ✅ Uniforma virgolette: "..." -> “...”, '...' -> ‘...’
         function normalizeQuotes(str) {
             if (str == null) return "";
             let s = str.toString();
@@ -235,15 +226,13 @@
             s = s.replace(/'([^']+)'/g, "‘$1’");
             return s;
         }
-
         function cleanText(str) { return normalizeQuotes(str); }
 
-        // ✅ Parser coordinate robusto (DMS o decimali)
+        // Parser coordinate robusto (DMS o decimali)
         function dmsToDecimalPair(coordStr) {
             if (!coordStr) return null;
             const s = coordStr.trim();
 
-            // blocchi terminanti con N/S/E/W
             const parts = s.match(/[^NSEW]*[NSEW]/gi);
             if (parts && parts.length >= 2) {
                 const a = parts[0].trim();
@@ -276,7 +265,6 @@
                 }
             }
 
-            // fallback: due numeri decimali
             const nums = s.match(/[-+]?\d+(?:[.,]\d+)?/g);
             if (nums && nums.length >= 2) {
                 const a = parseFloat(nums[0].replace(",", "."));
@@ -288,7 +276,6 @@
             return null;
         }
 
-        // chiave gruppo: arrotonda per evitare micro-differenze
         function coordKey(lat, lon, decimals = 5) {
             const f = Math.pow(10, decimals);
             const rLat = Math.round(lat * f) / f;
@@ -296,7 +283,6 @@
             return `${rLat.toFixed(decimals)},${rLon.toFixed(decimals)}`;
         }
 
-        // helper: trova un valore da possibili intestazioni (CSV “variabile”)
         function pick(r, keys) {
             for (const k of keys) {
                 if (r[k] != null && String(r[k]).trim() !== "") return String(r[k]);
@@ -304,7 +290,6 @@
             return "";
         }
 
-        // ✅ Raggruppa per coordinate (1 marker/popup per punto)
         function groupByCoordinates(recs) {
             const groups = new Map();
 
@@ -322,16 +307,9 @@
                 if (!nome || !titolo || !coordStr) continue;
 
                 const p = dmsToDecimalPair(coordStr);
-                if (!p) {
-                    console.warn("Coordinate non parseabili:", nome, coordStr);
-                    continue;
-                }
+                if (!p) continue;
 
-                // sicurezza: se fuori range Italia, scarta e logga
-                if (p.lat < 35 || p.lat > 48 || p.lon < 6 || p.lon > 19) {
-                    console.warn("Coordinate fuori Italia:", nome, coordStr, p);
-                    continue;
-                }
+                if (p.lat < 35 || p.lat > 48 || p.lon < 6 || p.lon > 19) continue;
 
                 const key = coordKey(p.lat, p.lon, 5);
 
@@ -367,7 +345,7 @@
 
                 const mapsUrl = pick(r, [
                     "LINK", "Link", "Maps", "Google Maps",
-                    "Link a goo", "Link a go", "Link a goo.", "Link a goo…"
+                    "Link a goo", "Link a go"
                 ]).trim();
 
                 g.items.push({
@@ -380,123 +358,114 @@
             return [...groups.values()];
         }
 
-        // ✅ Popup: SINISTRA foto grandi (scroll) — DESTRA testo
-        // ❌ Nessuna dicitura "Foto nello stesso punto"
+        // ✅ Popup finale: foto SINISTRA (colonna + scroll), testo DESTRA
+        // ❌ niente "Foto nello stesso punto"
         function buildPopupHtmlGroup(g) {
             const stradaKm = [g.strada, g.km ? `km ${g.km}` : ""].filter(Boolean).join(" – ");
 
-            const left = `
-            <div class="popup-left">
-              ${g.items.map((it) => {
-                const imgSrc = \`img/\${encodeURIComponent(it.nome)}.bmp\`;
-                const linkHtml = it.mapsUrl
-                  ? \`<div class="photo-links"><a href="\${esc(it.mapsUrl)}" target="_blank" rel="noopener">Apri in Google Maps</a></div>\`
-                  : "";
+            // sinistra: cards foto una sotto l'altra
+            let leftCards = "";
+            for (const it of g.items) {
+                const imgSrc = "img/" + encodeURIComponent(it.nome) + ".bmp";
 
-                return `
-                    < div class="photo-card" >
-                        <img src="${'${imgSrc}'}" class="popup-photo" alt="${'${esc(it.nome)}'}">
-                            <div class="photo-caption">
-                                <b>${'${esc(it.nome)}'}</b>${'${it.titoloFoto ? ` — ${esc(it.titoloFoto)}` : ""}'}
-                            </div>
-                            ${'${linkHtml}'}
-                        </div>
-                `;
-              }).join("")}
-            </div>
-          `;
-
-                const right = `
-            <div class="popup-right">
-              <div class="popup-title"><b>${esc(g.titolo || "Senza titolo")}</b></div>
-
-              <div class="meta">
-                ${g.data ? `<div class="row"><b>Data del rilievo fotografico:</b> ${esc(g.data)}</div>` : ""}
-                ${g.autore ? `<div class="row"><b>Autore:</b> ${esc(g.autore)}</div>` : ""}
-                ${g.descr ? `<div class="row"><b>Descrizione:</b> ${esc(g.descr)}</div>` : ""}
-                ${g.compartimento ? `<div class="row"><b>Compartimento:</b> ${esc(g.compartimento)}</div>` : ""}
-                ${stradaKm ? `<div class="row"><b>Strada:</b> ${esc(stradaKm)}</div>` : ""}
-                <div class="row muted"><b>Coordinate:</b> ${esc(g.coordLabel)}</div>
-              </div>
-            </div>
-          `;
-
-                return `<div class="popup-grid">${left}${right}</div>`;
-            }
-
-        // ✅ Caricamento CSV con fallback encoding (UTF-8 -> Windows-1252)
-        async function loadCsvAndBuild() {
-                    const res = await fetch(CSV_FILE, { cache: "no-store" });
-                    const buf = await res.arrayBuffer();
-
-                    // prova UTF-8
-                    let text = new TextDecoder("utf-8").decode(buf);
-
-                    // se ci sono caratteri sostituzione, prova Windows-1252 (Excel ANSI)
-                    const bad = (text.match(/\uFFFD/g) || []).length;
-                    if (bad > 0) {
-                        text = new TextDecoder("windows-1252").decode(buf);
-                    }
-
-                    const parsed = Papa.parse(text, {
-                        header: true,
-                        skipEmptyLines: true
-                    });
-
-                    records = (parsed.data || []).filter(r => {
-                        const nome = pick(r, ["Nome"]).trim();
-                        const titolo = pick(r, ["Titolo"]).trim();
-                        const coord = pick(r, [
-                            "Coordinate per georeferenziazione",
-                            "Coordinate",
-                            "Coordinat",
-                            "Coordinate per georeferenziazione "
-                        ]).trim();
-                        return nome && titolo && coord;
-                    });
-
-                    if (map.loaded()) buildMarkersAndList(records);
-                    else map.on("load", () => buildMarkersAndList(records));
+                let linkHtml = "";
+                if (it.mapsUrl) {
+                    linkHtml =
+                        '<div class="photo-links">' +
+                        '<a href="' + esc(it.mapsUrl) + '" target="_blank" rel="noopener">Apri in Google Maps</a>' +
+                        "</div>";
                 }
 
+                const caption =
+                    "<div class=\"photo-caption\"><b>" + esc(it.nome) + "</b>" +
+                    (it.titoloFoto ? (" — " + esc(it.titoloFoto)) : "") +
+                    "</div>";
+
+                leftCards +=
+                    '<div class="photo-card">' +
+                    '<img class="popup-photo" src="' + imgSrc + '" alt="' + esc(it.nome) + '">' +
+                    caption +
+                    linkHtml +
+                    "</div>";
+            }
+
+            const left = '<div class="popup-left">' + leftCards + "</div>";
+
+            const right =
+                '<div class="popup-right">' +
+                '<div class="popup-title"><b>' + esc(g.titolo || "Senza titolo") + '</b></div>' +
+                '<div class="meta">' +
+                (g.data ? ('<div class="row"><b>Data del rilievo fotografico:</b> ' + esc(g.data) + "</div>") : "") +
+                (g.autore ? ('<div class="row"><b>Autore:</b> ' + esc(g.autore) + "</div>") : "") +
+                (g.descr ? ('<div class="row"><b>Descrizione:</b> ' + esc(g.descr) + "</div>") : "") +
+                (g.compartimento ? ('<div class="row"><b>Compartimento:</b> ' + esc(g.compartimento) + "</div>") : "") +
+                (stradaKm ? ('<div class="row"><b>Strada:</b> ' + esc(stradaKm) + "</div>") : "") +
+                ('<div class="row muted"><b>Coordinate:</b> ' + esc(g.coordLabel) + "</div>") +
+                "</div>" +
+                "</div>";
+
+            return '<div class="popup-grid">' + left + right + "</div>";
+        }
+
+        async function loadCsvAndBuild() {
+            const res = await fetch(CSV_FILE, { cache: "no-store" });
+            const buf = await res.arrayBuffer();
+
+            let text = new TextDecoder("utf-8").decode(buf);
+            const bad = (text.match(/\uFFFD/g) || []).length;
+            if (bad > 0) text = new TextDecoder("windows-1252").decode(buf);
+
+            const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+
+            records = (parsed.data || []).filter(r => {
+                const nome = pick(r, ["Nome"]).trim();
+                const titolo = pick(r, ["Titolo"]).trim();
+                const coord = pick(r, [
+                    "Coordinate per georeferenziazione",
+                    "Coordinate",
+                    "Coordinat",
+                    "Coordinate per georeferenziazione "
+                ]).trim();
+                return nome && titolo && coord;
+            });
+
+            if (map.loaded()) buildMarkersAndList(records);
+            else map.on("load", () => buildMarkersAndList(records));
+        }
+
         function buildMarkersAndList(recs) {
-                    const lista = document.getElementById("lista-case");
-                    lista.innerHTML = "";
+            const lista = document.getElementById("lista-case");
+            lista.innerHTML = "";
 
-                    // rimuovi vecchi markers
-                    Object.values(markersByGroup).forEach(x => {
-                        try { x.marker.remove(); } catch (e) { }
-                    });
-                    for (const k in markersByGroup) delete markersByGroup[k];
+            Object.values(markersByGroup).forEach(x => { try { x.marker.remove(); } catch (e) { } });
+            for (const k in markersByGroup) delete markersByGroup[k];
 
-                    const groups = groupByCoordinates(recs);
+            const groups = groupByCoordinates(recs);
 
-                    groups.forEach(g => {
-                        const coordinates = [g.lon, g.lat]; // Mapbox: [lon, lat]
+            groups.forEach(g => {
+                const coordinates = [g.lon, g.lat];
 
-                        const el = document.createElement("div");
-                        el.className = "marker-casa";
+                const el = document.createElement("div");
+                el.className = "marker-casa";
 
-                        const popup = new mapboxgl.Popup({ offset: 20 })
-                            .setHTML(buildPopupHtmlGroup(g));
+                const popup = new mapboxgl.Popup({ offset: 20 }).setHTML(buildPopupHtmlGroup(g));
 
-                        const marker = new mapboxgl.Marker(el)
-                            .setLngLat(coordinates)
-                            .setPopup(popup)
-                            .addTo(map);
+                const marker = new mapboxgl.Marker(el)
+                    .setLngLat(coordinates)
+                    .setPopup(popup)
+                    .addTo(map);
 
-                        markersByGroup[g.key] = { marker, popup, coordinates, group: g };
+                markersByGroup[g.key] = { marker, popup, coordinates, group: g };
 
-                        // Sidebar item: 1 per punto (coordinate)
-                        const div = document.createElement("div");
-                        div.className = "casa-item";
+                const div = document.createElement("div");
+                div.className = "casa-item";
 
-                        const sub1 = [g.strada, g.km ? `km ${g.km}` : ""].filter(Boolean).join(" – ");
-                        const sub2 = g.compartimento ? `Compartimento: ${g.compartimento}` : "";
-                        const sub3 = g.data ? `Data: ${g.data}` : "";
-                        const sub4 = `Foto: ${g.items.length}`;
+                const sub1 = [g.strada, g.km ? `km ${g.km}` : ""].filter(Boolean).join(" – ");
+                const sub2 = g.compartimento ? `Compartimento: ${g.compartimento}` : "";
+                const sub3 = g.data ? `Data: ${g.data}` : "";
+                const sub4 = `Foto: ${g.items.length}`;
 
-                        div.innerHTML = `
+                div.innerHTML = `
               <strong>${esc(g.titolo || "Senza titolo")}</strong>
               ${sub1 ? `<small>${esc(sub1)}</small>` : ""}
               ${sub2 ? `<small>${esc(sub2)}</small>` : ""}
@@ -504,16 +473,14 @@
               <small>${esc(sub4)}</small>
             `;
 
-                        div.addEventListener("click", () => {
-                            map.flyTo({ center: coordinates, zoom: 12.5, essential: true });
-                            markersByGroup[g.key].popup
-                                .setHTML(buildPopupHtmlGroup(g))
-                                .addTo(map);
-                        });
+                div.addEventListener("click", () => {
+                    map.flyTo({ center: coordinates, zoom: 12.5, essential: true });
+                    markersByGroup[g.key].popup.setHTML(buildPopupHtmlGroup(g)).addTo(map);
+                });
 
-                        lista.appendChild(div);
-                    });
-                }
+                lista.appendChild(div);
+            });
+        }
 
         loadCsvAndBuild();
     </script>
