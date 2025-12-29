@@ -17,12 +17,12 @@
             box-sizing: border-box;
         }
 
-        /* ✅ font base responsive */
+        /* ✅ font base responsive (più piccolo) */
         body {
             margin: 0;
             padding: 0;
             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            font-size: clamp(14px, 1.1vw, 18px);
+            font-size: clamp(13px, 1.0vw, 16px);
         }
 
         #app {
@@ -46,7 +46,7 @@
                 margin: 0 0 12px;
                 font-weight: 800;
                 line-height: 1.2;
-                font-size: clamp(18px, 1.4vw, 24px);
+                font-size: clamp(16px, 1.25vw, 20px);
             }
 
         .casa-item {
@@ -66,14 +66,14 @@
             .casa-item strong {
                 display: block;
                 margin-bottom: 4px;
-                font-size: clamp(14px, 1.05vw, 17px);
+                font-size: clamp(13px, 1.0vw, 15px);
             }
 
             .casa-item small {
                 color: #666;
                 display: block;
                 line-height: 1.3;
-                font-size: clamp(12px, 0.95vw, 15px);
+                font-size: clamp(11.5px, 0.9vw, 13.5px);
             }
 
         #map {
@@ -103,18 +103,20 @@
             border-radius: 10px;
         }
 
+        /* ✅ titolo popup più piccolo */
         .popup-title {
             font-weight: 900;
             margin: 0 0 10px;
             overflow-wrap: anywhere;
             line-height: 1.15;
-            font-size: clamp(18px, 1.6vw, 26px);
+            font-size: clamp(16px, 1.35vw, 22px);
         }
 
+        /* ✅ testo popup più piccolo */
         .meta {
             overflow-wrap: anywhere;
             line-height: 1.55;
-            font-size: clamp(14px, 1.15vw, 18px);
+            font-size: clamp(13px, 1.0vw, 16px);
         }
 
             .meta .row {
@@ -195,6 +197,28 @@
                 .replaceAll("'", "&#039;");
         }
 
+        // ✅ Uniforma virgolette: "..." -> “...”, '...' -> ‘...’
+        // (solo se sono a coppia, così non rovina abbreviazioni o apostrofi)
+        function normalizeQuotes(str) {
+            if (str == null) return "";
+            let s = str.toString();
+
+            // normalizza eventuali smart quotes già presenti
+            s = s.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+
+            // "testo" -> “testo”
+            s = s.replace(/"([^"]+)"/g, "“$1”");
+
+            // 'testo' -> ‘testo’
+            s = s.replace(/'([^']+)'/g, "‘$1’");
+
+            return s;
+        }
+
+        function cleanText(str) {
+            return normalizeQuotes(str);
+        }
+
         // ✅ Parser coordinate robusto (DMS o decimali)
         function dmsToDecimalPair(coordStr) {
             if (!coordStr) return null;
@@ -251,24 +275,24 @@
             const nome = (r["Nome"] ?? "").toString().trim();
             const imgSrc = `img/${encodeURIComponent(nome)}.bmp`;
 
-            const titolo = (r["Titolo"] ?? "").toString();
+            const titolo = cleanText((r["Titolo"] ?? "").toString());
 
             const data =
-                (r["Data rilievo fotografico"] ??
+                cleanText((r["Data rilievo fotografico"] ??
                     r["Data del rilievo fotografico"] ??
                     r["Data rilievo fotografico "] ??
-                    "").toString();
+                    "").toString());
 
-            const autore = (r["Autore"] ?? "").toString();
+            const autore = cleanText((r["Autore"] ?? "").toString());
 
             const descr =
-                (r["Descrizione su foto"] ??
+                cleanText((r["Descrizione su foto"] ??
                     r["Descrizione del contenuto"] ??
-                    "").toString();
+                    "").toString());
 
-            const compartimento = (r["Compartimento"] ?? "").toString();
-            const strada = (r["Strada"] ?? "").toString();
-            const km = (r["Chilometrica"] ?? "").toString();
+            const compartimento = cleanText((r["Compartimento"] ?? "").toString());
+            const strada = cleanText((r["Strada"] ?? "").toString());
+            const km = cleanText((r["Chilometrica"] ?? "").toString());
 
             const mapsUrl =
                 (r["LINK"] ??
@@ -277,7 +301,7 @@
                     r["Google Maps"] ??
                     "").toString();
 
-            const coordLabel = (r["Coordinate per georeferenziazione"] ?? r["Coordinate"] ?? "").toString();
+            const coordLabel = cleanText((r["Coordinate per georeferenziazione"] ?? r["Coordinate"] ?? "").toString());
 
             const stradaKm = [strada, km].filter(Boolean).join(" – km ");
 
@@ -346,7 +370,7 @@
 
             recs.forEach(r => {
                 const nome = (r["Nome"] ?? "").toString().trim();
-                const titolo = (r["Titolo"] ?? "").toString().trim();
+                const titolo = cleanText((r["Titolo"] ?? "").toString()).trim();
                 const coordStr = (r["Coordinate per georeferenziazione"] ?? r["Coordinate"] ?? "").toString().trim();
 
                 const p = dmsToDecimalPair(coordStr);
@@ -380,14 +404,14 @@
                 const div = document.createElement("div");
                 div.className = "casa-item";
 
-                const strada = (r["Strada"] ?? "").toString().trim();
-                const km = (r["Chilometrica"] ?? "").toString().trim();
-                const compartimento = (r["Compartimento"] ?? "").toString().trim();
+                const strada = cleanText((r["Strada"] ?? "").toString()).trim();
+                const km = cleanText((r["Chilometrica"] ?? "").toString()).trim();
+                const compartimento = cleanText((r["Compartimento"] ?? "").toString()).trim();
                 const data =
-                    (r["Data rilievo fotografico"] ??
+                    cleanText((r["Data rilievo fotografico"] ??
                         r["Data del rilievo fotografico"] ??
                         r["Data rilievo fotografico "] ??
-                        "").toString().trim();
+                        "").toString()).trim();
 
                 const sub1 = [strada, km ? `km ${km}` : ""].filter(Boolean).join(" – ");
                 const sub2 = compartimento ? `Compartimento: ${compartimento}` : "";
@@ -413,3 +437,4 @@
     </script>
 </body>
 </html>
+
