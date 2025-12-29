@@ -17,7 +17,6 @@
             box-sizing: border-box;
         }
 
-        /* ✅ font base responsive (più piccolo) */
         body {
             margin: 0;
             padding: 0;
@@ -80,7 +79,7 @@
             flex: 1;
         }
 
-        /* ✅ POPUP: grande (>= metà schermo) + scroll interno */
+        /* POPUP: grande + scroll interno */
         .mapboxgl-popup-content {
             width: min(92vw, 1200px);
             max-width: 1200px;
@@ -89,21 +88,6 @@
             padding: 16px 18px;
         }
 
-        .popup-grid {
-            display: grid;
-            grid-template-columns: minmax(260px, 520px) 1fr;
-            gap: 14px;
-            align-items: start;
-        }
-
-        .popup-img {
-            width: 100%;
-            height: auto;
-            display: block;
-            border-radius: 10px;
-        }
-
-        /* ✅ titolo popup più piccolo */
         .popup-title {
             font-weight: 900;
             margin: 0 0 10px;
@@ -112,11 +96,11 @@
             font-size: clamp(16px, 1.35vw, 22px);
         }
 
-        /* ✅ testo popup più piccolo */
         .meta {
             overflow-wrap: anywhere;
             line-height: 1.55;
             font-size: clamp(13px, 1.0vw, 16px);
+            margin-bottom: 12px;
         }
 
             .meta .row {
@@ -131,18 +115,50 @@
             color: #666;
         }
 
+        /* Galleria immagini nel popup */
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+            align-items: start;
+        }
+
+        .photo-card {
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 10px;
+            background: #fff;
+        }
+
+            .photo-card img {
+                width: 100%;
+                height: auto;
+                display: block;
+                border-radius: 8px;
+            }
+
+        .photo-caption {
+            margin-top: 8px;
+            font-size: 13px;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+
+        .photo-links {
+            margin-top: 6px;
+            font-size: 13px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
         @media (max-width: 900px) {
             .mapboxgl-popup-content {
                 width: 94vw;
             }
 
-            .popup-grid {
+            .gallery {
                 grid-template-columns: 1fr;
-            }
-
-            .popup-img {
-                max-height: 45vh;
-                object-fit: contain;
             }
         }
 
@@ -169,14 +185,11 @@
     </div>
 
     <script>
-        // 🔑 Token Mapbox
         mapboxgl.accessToken =
             "pk.eyJ1IjoidmlvbGExMCIsImEiOiJjbWk0YjU2eDkxNDFtMmtxd2Eza3RyZ2QwIn0.AjMPW13eUzC91eH1FHD0-g";
 
-        // 📄 CSV esportato dal foglio FOTO_EPOCA_Selezionate
         const CSV_FILE = "FOTO_EPOCA_Selezionate.csv";
 
-        // Vista iniziale: Lazio + limitrofi
         const map = new mapboxgl.Map({
             container: "map",
             style: "mapbox://styles/mapbox/light-v11",
@@ -184,10 +197,9 @@
             zoom: 6.8
         });
 
-        const markersById = {};
+        const markersByGroup = {}; // <— ora per gruppo (coordinate)
         let records = [];
 
-        // Escape HTML
         function esc(s) {
             return (s ?? "").toString()
                 .replaceAll("&", "&amp;")
@@ -197,34 +209,22 @@
                 .replaceAll("'", "&#039;");
         }
 
-        // ✅ Uniforma virgolette: "..." -> “...”, '...' -> ‘...’
-        // (solo se sono a coppia, così non rovina abbreviazioni o apostrofi)
         function normalizeQuotes(str) {
             if (str == null) return "";
             let s = str.toString();
-
-            // normalizza eventuali smart quotes già presenti
             s = s.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-
-            // "testo" -> “testo”
             s = s.replace(/"([^"]+)"/g, "“$1”");
-
-            // 'testo' -> ‘testo’
             s = s.replace(/'([^']+)'/g, "‘$1’");
-
             return s;
         }
 
-        function cleanText(str) {
-            return normalizeQuotes(str);
-        }
+        function cleanText(str) { return normalizeQuotes(str); }
 
-        // ✅ Parser coordinate robusto (DMS o decimali)
+        // Parser coordinate robusto (DMS o decimali)
         function dmsToDecimalPair(coordStr) {
             if (!coordStr) return null;
             const s = coordStr.trim();
 
-            // blocchi terminanti con N/S/E/W
             const parts = s.match(/[^NSEW]*[NSEW]/gi);
             if (parts && parts.length >= 2) {
                 const a = parts[0].trim();
@@ -257,12 +257,10 @@
                 }
             }
 
-            // fallback: due numeri decimali
             const nums = s.match(/[-+]?\d+(?:[.,]\d+)?/g);
             if (nums && nums.length >= 2) {
                 const a = parseFloat(nums[0].replace(",", "."));
                 const b = parseFloat(nums[1].replace(",", "."));
-
                 if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return { lat: a, lon: b };
                 if (Math.abs(b) <= 90 && Math.abs(a) <= 180) return { lat: b, lon: a };
             }
@@ -270,87 +268,165 @@
             return null;
         }
 
-        // Popup (immagine sinistra, testo destra) — testo integrale, nessun taglio
-        function buildPopupHtml(r) {
-            const nome = (r["Nome"] ?? "").toString().trim();
-            const imgSrc = `img/${encodeURIComponent(nome)}.bmp`;
-
-            const titolo = cleanText((r["Titolo"] ?? "").toString());
-
-            const data =
-                cleanText((r["Data rilievo fotografico"] ??
-                    r["Data del rilievo fotografico"] ??
-                    r["Data rilievo fotografico "] ??
-                    "").toString());
-
-            const autore = cleanText((r["Autore"] ?? "").toString());
-
-            const descr =
-                cleanText((r["Descrizione su foto"] ??
-                    r["Descrizione del contenuto"] ??
-                    "").toString());
-
-            const compartimento = cleanText((r["Compartimento"] ?? "").toString());
-            const strada = cleanText((r["Strada"] ?? "").toString());
-            const km = cleanText((r["Chilometrica"] ?? "").toString());
-
-            const mapsUrl =
-                (r["LINK"] ??
-                    r["Link"] ??
-                    r["Maps"] ??
-                    r["Google Maps"] ??
-                    "").toString();
-
-            const coordLabel = cleanText((r["Coordinate per georeferenziazione"] ?? r["Coordinate"] ?? "").toString());
-
-            const stradaKm = [strada, km].filter(Boolean).join(" – km ");
-
-            return `
-            <div class="popup-grid">
-              <div>
-                <img src="${imgSrc}" class="popup-img" alt="${esc(nome)}">
-              </div>
-
-              <div>
-                <div class="popup-title"><b>${esc(titolo)}</b></div>
-
-                <div class="meta">
-                  ${data ? `<div class="row"><b>Data del rilievo fotografico:</b> ${esc(data)}</div>` : ""}
-                  ${autore ? `<div class="row"><b>Autore:</b> ${esc(autore)}</div>` : ""}
-                  ${descr ? `<div class="row"><b>Descrizione:</b> ${esc(descr)}</div>` : ""}
-                  ${compartimento ? `<div class="row"><b>Compartimento:</b> ${esc(compartimento)}</div>` : ""}
-                  ${stradaKm ? `<div class="row"><b>Strada:</b> ${esc(stradaKm)}</div>` : ""}
-                  ${mapsUrl ? `<div class="row"><a href="${mapsUrl}" target="_blank" rel="noopener">Apri in Google Maps</a></div>` : ""}
-                  ${coordLabel ? `<div class="row muted"><b>Coordinate:</b> ${esc(coordLabel)}</div>` : ""}
-                </div>
-              </div>
-            </div>
-          `;
+        // chiave gruppo: arrotonda per evitare micro-differenze
+        function coordKey(lat, lon, decimals = 5) {
+            const f = Math.pow(10, decimals);
+            const rLat = Math.round(lat * f) / f;
+            const rLon = Math.round(lon * f) / f;
+            return `${rLat.toFixed(decimals)},${rLon.toFixed(decimals)}`;
         }
 
-        // ✅ Caricamento CSV con fallback encoding (UTF-8 -> Windows-1252)
+        // helper: trova un valore da possibili intestazioni (CSV “variabile”)
+        function pick(r, keys) {
+            for (const k of keys) {
+                if (r[k] != null && String(r[k]).trim() !== "") return String(r[k]);
+            }
+            return "";
+        }
+
+        // ✅ Raggruppa per coordinate (1 marker/popup per punto)
+        function groupByCoordinates(recs) {
+            const groups = new Map();
+
+            for (const r of recs) {
+                const nome = pick(r, ["Nome"]).trim();
+                const titolo = cleanText(pick(r, ["Titolo"])).trim();
+
+                // NEL TUO CSV la colonna sembra chiamarsi "Coordinat" / "Coordinat..." (tagliata in foto)
+                // qui gestisco sia quella sia i nomi usati prima
+                const coordStr = pick(r, [
+                    "Coordinate per georeferenziazione",
+                    "Coordinate",
+                    "Coordinat",
+                    "Coordinate per georeferenziazione "
+                ]).trim();
+
+                if (!nome || !titolo || !coordStr) continue;
+
+                const p = dmsToDecimalPair(coordStr);
+                if (!p) {
+                    console.warn("Coordinate non parseabili:", nome, coordStr);
+                    continue;
+                }
+
+                // scarto fuori Italia (come facevi tu)
+                if (p.lat < 35 || p.lat > 48 || p.lon < 6 || p.lon > 19) {
+                    console.warn("Coordinate fuori Italia:", nome, coordStr, p);
+                    continue;
+                }
+
+                const key = coordKey(p.lat, p.lon, 5);
+
+                if (!groups.has(key)) {
+                    // prendo “info comune” dalla prima riga del gruppo
+                    groups.set(key, {
+                        key,
+                        lat: p.lat,
+                        lon: p.lon,
+                        coordLabel: cleanText(coordStr),
+
+                        // info pannello (dalla prima riga)
+                        titolo: cleanText(pick(r, ["Titolo"])).trim(),
+                        data: cleanText(pick(r, [
+                            "Data rilievo fotografico",
+                            "Data del rilievo fotografico",
+                            "Data rilievo fotografico "
+                        ])).trim(),
+                        autore: cleanText(pick(r, ["Autore"])).trim(),
+                        descr: cleanText(pick(r, [
+                            "Descrizione su foto",
+                            "Descrizione del contenuto",
+                            "Descrizion",
+                            "Descrizione"
+                        ])).trim(),
+                        compartimento: cleanText(pick(r, ["Compartimento", "Compartim"])).trim(),
+                        strada: cleanText(pick(r, ["Strada"])).trim(),
+                        km: cleanText(pick(r, ["Chilometrica", "Chilometr", "Chilomet"])).trim(),
+
+                        // tutte le foto dello stesso punto
+                        items: []
+                    });
+                }
+
+                const g = groups.get(key);
+
+                // link: nel tuo CSV è tipo "Link a goo..." / "Link a go..."
+                const mapsUrl = pick(r, [
+                    "LINK", "Link", "Maps", "Google Maps",
+                    "Link a goo", "Link a go", "Link a goo.", "Link a goo…"
+                ]).trim();
+
+                g.items.push({
+                    nome: nome,
+                    titoloFoto: cleanText(pick(r, ["Titolo"])).trim(),
+                    mapsUrl: mapsUrl
+                });
+            }
+
+            return [...groups.values()];
+        }
+
+        // ✅ Popup: info comune + galleria foto (una per riga originale)
+        function buildPopupHtmlGroup(g) {
+            const stradaKm = [g.strada, g.km ? `km ${g.km}` : ""].filter(Boolean).join(" – ");
+
+            const info = `
+            <div class="popup-title"><b>${esc(g.titolo || "Senza titolo")}</b></div>
+            <div class="meta">
+              ${g.data ? `<div class="row"><b>Data del rilievo fotografico:</b> ${esc(g.data)}</div>` : ""}
+              ${g.autore ? `<div class="row"><b>Autore:</b> ${esc(g.autore)}</div>` : ""}
+              ${g.descr ? `<div class="row"><b>Descrizione:</b> ${esc(g.descr)}</div>` : ""}
+              ${g.compartimento ? `<div class="row"><b>Compartimento:</b> ${esc(g.compartimento)}</div>` : ""}
+              ${stradaKm ? `<div class="row"><b>Strada:</b> ${esc(stradaKm)}</div>` : ""}
+              <div class="row muted"><b>Coordinate:</b> ${esc(g.coordLabel)}</div>
+              <div class="row"><b>Foto nello stesso punto:</b> ${g.items.length}</div>
+            </div>
+          `;
+
+            const gallery = `
+            <div class="gallery">
+              ${g.items.map((it, idx) => {
+                const imgSrc = `img/${encodeURIComponent(it.nome)}.bmp`;
+                const linkHtml = it.mapsUrl
+                    ? `<a href="${esc(it.mapsUrl)}" target="_blank" rel="noopener">Apri in Google Maps</a>`
+                    : "";
+                return `
+                  <div class="photo-card">
+                    <img src="${imgSrc}" alt="${esc(it.nome)}">
+                    <div class="photo-caption">
+                      <b>${esc(it.nome)}</b>${it.titoloFoto ? ` — ${esc(it.titoloFoto)}` : ""}
+                    </div>
+                    ${linkHtml ? `<div class="photo-links">${linkHtml}</div>` : ""}
+                  </div>
+                `;
+            }).join("")}
+            </div>
+          `;
+
+            return `${info}${gallery}`;
+        }
+
+        // Caricamento CSV con fallback encoding
         async function loadCsvAndBuild() {
             const res = await fetch(CSV_FILE, { cache: "no-store" });
             const buf = await res.arrayBuffer();
 
-            // prova UTF-8
             let text = new TextDecoder("utf-8").decode(buf);
-
-            // se ci sono caratteri sostituzione, prova Windows-1252 (Excel ANSI)
             const bad = (text.match(/\uFFFD/g) || []).length;
-            if (bad > 0) {
-                text = new TextDecoder("windows-1252").decode(buf);
-            }
+            if (bad > 0) text = new TextDecoder("windows-1252").decode(buf);
 
-            const parsed = Papa.parse(text, {
-                header: true,
-                skipEmptyLines: true
-            });
+            const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
 
+            // filtro minimo: Nome, Titolo, Coordinate
             records = (parsed.data || []).filter(r => {
-                const nome = (r["Nome"] ?? "").toString().trim();
-                const titolo = (r["Titolo"] ?? "").toString().trim();
-                const coord = (r["Coordinate per georeferenziazione"] ?? r["Coordinate"] ?? "").toString().trim();
+                const nome = pick(r, ["Nome"]).trim();
+                const titolo = pick(r, ["Titolo"]).trim();
+                const coord = pick(r, [
+                    "Coordinate per georeferenziazione",
+                    "Coordinate",
+                    "Coordinat",
+                    "Coordinate per georeferenziazione "
+                ]).trim();
                 return nome && titolo && coord;
             });
 
@@ -363,70 +439,51 @@
             lista.innerHTML = "";
 
             // rimuovi vecchi markers
-            Object.values(markersById).forEach(x => {
+            Object.values(markersByGroup).forEach(x => {
                 try { x.marker.remove(); } catch (e) { }
             });
-            for (const k in markersById) delete markersById[k];
+            for (const k in markersByGroup) delete markersByGroup[k];
 
-            recs.forEach(r => {
-                const nome = (r["Nome"] ?? "").toString().trim();
-                const titolo = cleanText((r["Titolo"] ?? "").toString()).trim();
-                const coordStr = (r["Coordinate per georeferenziazione"] ?? r["Coordinate"] ?? "").toString().trim();
+            const groups = groupByCoordinates(recs);
 
-                const p = dmsToDecimalPair(coordStr);
-                if (!p) {
-                    console.warn("Coordinate non parseabili:", nome, coordStr);
-                    return;
-                }
-
-                const coordinates = [p.lon, p.lat]; // Mapbox: [lon, lat]
-
-                // sicurezza: se fuori range Italia, scarta e logga
-                if (p.lat < 35 || p.lat > 48 || p.lon < 6 || p.lon > 19) {
-                    console.warn("Coordinate fuori Italia:", nome, coordStr, p);
-                    return;
-                }
+            groups.forEach(g => {
+                const coordinates = [g.lon, g.lat];
 
                 const el = document.createElement("div");
                 el.className = "marker-casa";
 
                 const popup = new mapboxgl.Popup({ offset: 20 })
-                    .setHTML(buildPopupHtml(r));
+                    .setHTML(buildPopupHtmlGroup(g));
 
                 const marker = new mapboxgl.Marker(el)
                     .setLngLat(coordinates)
                     .setPopup(popup)
                     .addTo(map);
 
-                markersById[nome] = { marker, popup, coordinates, row: r };
+                markersByGroup[g.key] = { marker, popup, coordinates, group: g };
 
-                // Sidebar item
+                // Sidebar item (1 per gruppo)
                 const div = document.createElement("div");
                 div.className = "casa-item";
 
-                const strada = cleanText((r["Strada"] ?? "").toString()).trim();
-                const km = cleanText((r["Chilometrica"] ?? "").toString()).trim();
-                const compartimento = cleanText((r["Compartimento"] ?? "").toString()).trim();
-                const data =
-                    cleanText((r["Data rilievo fotografico"] ??
-                        r["Data del rilievo fotografico"] ??
-                        r["Data rilievo fotografico "] ??
-                        "").toString()).trim();
-
-                const sub1 = [strada, km ? `km ${km}` : ""].filter(Boolean).join(" – ");
-                const sub2 = compartimento ? `Compartimento: ${compartimento}` : "";
-                const sub3 = data ? `Data: ${data}` : "";
+                const sub1 = [g.strada, g.km ? `km ${g.km}` : ""].filter(Boolean).join(" – ");
+                const sub2 = g.compartimento ? `Compartimento: ${g.compartimento}` : "";
+                const sub3 = g.data ? `Data: ${g.data}` : "";
+                const sub4 = `Foto: ${g.items.length}`;
 
                 div.innerHTML = `
-              <strong>${esc(titolo)}</strong>
+              <strong>${esc(g.titolo || "Senza titolo")}</strong>
               ${sub1 ? `<small>${esc(sub1)}</small>` : ""}
               ${sub2 ? `<small>${esc(sub2)}</small>` : ""}
               ${sub3 ? `<small>${esc(sub3)}</small>` : ""}
+              <small>${esc(sub4)}</small>
             `;
 
                 div.addEventListener("click", () => {
                     map.flyTo({ center: coordinates, zoom: 12.5, essential: true });
-                    markersById[nome].popup.setHTML(buildPopupHtml(r)).addTo(map);
+                    markersByGroup[g.key].popup
+                        .setHTML(buildPopupHtmlGroup(g))
+                        .addTo(map);
                 });
 
                 lista.appendChild(div);
@@ -437,4 +494,3 @@
     </script>
 </body>
 </html>
-
